@@ -1,0 +1,8 @@
+# 参考文件：原始 mod jar（体积大，不纳入版本库）
+reference/
+
+# ZCode 临时文件目录
+.XMTEMP/
+
+# Git 内部目录（显式声明；git 本身不会跟踪它）
+.git/
