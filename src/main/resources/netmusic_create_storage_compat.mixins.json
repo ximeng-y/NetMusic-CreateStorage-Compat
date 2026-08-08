@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "com.xm2nd.netmusiccreatestoragecompat.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "JukeboxDiscSlotMixin",
+    "JukeboxServerPacketMixin",
+    "JukeboxHandlerMixin",
+    "JukeboxUpgradeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

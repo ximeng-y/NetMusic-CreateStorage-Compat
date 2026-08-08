@@ -6,3 +6,8 @@ reference/
 
 # Git 内部目录（显式声明；git 本身不会跟踪它）
 .git/
+
+# Gradle 构建产物与运行目录
+build/
+run/
+.gradle/

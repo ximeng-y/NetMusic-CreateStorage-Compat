@@ -1,0 +1,44 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mods]]
+modId = "netmusic_create_storage_compat"
+version = "1.0.0"
+displayName = "NetMusic-CreateStorage-Compat"
+description = '''
+让 NetMusic 的音乐唱片（music_cd）可以放入 Create:Storage 背包的唱片机升级槽位并正常播放，
+充当随身音响。兼容 fxntstorage 1.3.0 ~ 1.3.2。
+'''
+authors = "xm2nd"
+
+[[dependencies.netmusic_create_storage_compat]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.netmusic_create_storage_compat]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.netmusic_create_storage_compat]]
+modId = "fxntstorage"
+type = "required"
+versionRange = "[1.3.0,1.4)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.netmusic_create_storage_compat]]
+modId = "netmusic"
+type = "required"
+versionRange = "[1.5.1,2)"
+ordering = "NONE"
+side = "BOTH"
+
+[[mixins]]
+config = "netmusic_create_storage_compat.mixins.json"
