@@ -6,6 +6,7 @@ NetMusic 与 Create:Storage 的兼容修复 mod：让 NetMusic 的音乐唱片�
 
 - **NetMusic 唱片入槽**：唱片机升级槽位原本只认原版 `jukebox_playable` 组件，NetMusic 唱片会被拒绝放入；本 mod 放行 NetMusic 唱片
 - **三种形态播放**：穿戴（WORN）、方块（BLOCK）、装置（CONTRAPTION）背包均可播放
+- **穿戴/装置多人可闻**（顺带优化）：穿戴与装置形态的播放会广播给附近玩家（原版只发本人/操作者），声音随距离衰减
 
 ## 环境要求
 
@@ -51,6 +52,7 @@ A compatibility fix mod for NetMusic and Create:Storage: it allows NetMusic musi
 
 - **NetMusic disc in slot**: The jukebox upgrade slot only accepted vanilla `jukebox_playable` components, rejecting NetMusic discs; this mod lets NetMusic discs in
 - **Three backpack forms**: WORN, BLOCK and CONTRAPTION backpacks all support playback
+- **Audible to nearby players (WORN / CONTRAPTION)**: WORN and CONTRAPTION playback is broadcast to nearby players (vanilla only sends it to the wearer / operator), with distance-based attenuation
 
 ## Requirements
 
