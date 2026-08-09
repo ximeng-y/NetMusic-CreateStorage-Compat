@@ -20,7 +20,9 @@
 ## 安装
 
 1. 安装 NeoForge 21.1.x 与前置 mod（Create:Storage、Create、NetMusic）
-2. 下载成品 jar
+2. 下载成品 jar，放入 `mods/` 目录：
+    - CurseForge：审核中
+    - Modrinth：审核中
 3. 启动游戏即可使用
 
 ## 使用
@@ -67,7 +69,9 @@ A compatibility fix mod for [NetMusic](https://github.com/TartaricAcid/NetMusic)
 ## Installation
 
 1. Install NeoForge 21.1.x and the prerequisite mods (Create:Storage, Create, NetMusic)
-2. Download the release jar
+2. Download the release jar and put it into the `mods/` folder:
+    - CurseForge: under review
+    - Modrinth: under review
 3. Launch the game and it just works
 
 ## Usage
