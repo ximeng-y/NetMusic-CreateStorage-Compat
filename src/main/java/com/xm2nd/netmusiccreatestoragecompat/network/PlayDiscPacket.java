@@ -9,6 +9,7 @@ import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.codec.NeoForgeStreamCodecs;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -48,9 +49,17 @@ public record PlayDiscPacket(Action action, Source source, Optional<BlockPos> po
     }
 
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar(NetMusicCreateStorageCompat.MOD_ID).versioned("1.0");
+        // 频道版本 = mod 版本：客户端与服务端 mod 版本不一致时，
+        // NeoForge 频道协商（NetworkComponentNegotiator）会直接拒绝连接，与本 mod 未安装同款处理。
+        PayloadRegistrar registrar = event.registrar(NetMusicCreateStorageCompat.MOD_ID).versioned(modVersion());
         registrar.playToClient(TYPE, STREAM_CODEC, PlayDiscPacket::handleClient);
         PlaybackFinishedPacket.registerPayloads(registrar);
+    }
+
+    /** mod 版本取自 mods.toml（发布时需与 build.gradle 同步），两侧一致才允许进入 */
+    private static String modVersion() {
+        return ModList.get().getModContainerById(NetMusicCreateStorageCompat.MOD_ID)
+                .orElseThrow().getModInfo().getVersion().toString();
     }
 
     private static void handleClient(PlayDiscPacket packet, IPayloadContext context) {

@@ -4,7 +4,7 @@ license = "MIT"
 
 [[mods]]
 modId = "netmusic_create_storage_compat"
-version = "1.0.0"
+version = "1.1.0"
 displayName = "NetMusic-CreateStorage-Compat"
 description = '''
 让 NetMusic 的音乐唱片（music_cd）可以放入 Create:Storage 背包的唱片机升级槽位并正常播放，
