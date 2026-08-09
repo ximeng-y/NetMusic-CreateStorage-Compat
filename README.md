@@ -22,8 +22,8 @@
 
 1. 安装 NeoForge 21.1.x 与前置 mod（Create:Storage、Create、NetMusic）
 2. 下载成品 jar，放入 `mods/` 目录：
-    - CurseForge：审核中
-    - Modrinth：审核中
+    - CurseForge：https://www.curseforge.com/minecraft/mc-mods/netmusic-createstorage-compat
+    - Modrinth：https://modrinth.com/mod/netmusic-createstorage-compat
 3. 启动游戏即可使用
 
 ## 使用
