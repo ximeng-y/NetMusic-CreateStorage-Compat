@@ -39,7 +39,9 @@
 
 ## 许可
 
-MIT
+- 本 mod 代码采用 MIT 许可
+- 兼容依赖 [NetMusic](https://github.com/TartaricAcid/NetMusic)（BSD 3-Clause，Copyright (c) TartaricAcid and contributors）
+- 兼容依赖 [Create:Storage](https://github.com/ausmez/create-storage-neo-forge)（GPL-3.0，mixin 互操作）
 
 ---
 
@@ -84,4 +86,6 @@ A compatibility fix mod for [NetMusic](https://github.com/TartaricAcid/NetMusic)
 
 ## License
 
-MIT
+- This mod's code is licensed under MIT
+- Compatible with [NetMusic](https://github.com/TartaricAcid/NetMusic) (BSD 3-Clause, Copyright (c) TartaricAcid and contributors)
+- Compatible with [Create:Storage](https://github.com/ausmez/create-storage-neo-forge) (GPL-3.0, mixin interop)
