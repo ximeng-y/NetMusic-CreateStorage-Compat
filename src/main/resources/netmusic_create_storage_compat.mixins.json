@@ -9,6 +9,9 @@
     "JukeboxHandlerMixin",
     "JukeboxUpgradeMixin"
   ],
+  "client": [
+    "ClientJukeboxHandlerMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

@@ -25,6 +25,7 @@ public class CompatNetMusicSound extends NetMusicBackpackSound {
     private final Runnable onFinished;
     private final float baseVolume;
     private boolean finishedNotified = false;
+    private boolean muted = false;
 
     public CompatNetMusicSound(BlockPos pos, @Nullable Entity entity, URL url, int timeSecond, Runnable onFinished) {
         super(pos, entity, url, timeSecond);
@@ -44,6 +45,11 @@ public class CompatNetMusicSound extends NetMusicBackpackSound {
     }
 
     public void setMuted(boolean muted) {
+        this.muted = muted;
         this.volume = muted ? 0.0F : this.baseVolume;
+    }
+
+    public boolean isMuted() {
+        return muted;
     }
 }

@@ -162,6 +162,37 @@ public final class NetMusicPlaybackClient {
         PacketDistributor.sendToServer(new PlaybackFinishedPacket(source, pos, entityId));
     }
 
+    // ==================== 状态查询 ====================
+    // 供 ClientJukeboxHandlerMixin 合并状态：面板播放/停止/静音按钮图标
+    // 每 tick 读 ClientJukeboxHandler 的查询方法，命中这里则返回 NetMusic 状态
+
+    /** 本玩家是否在播 NetMusic（WORN 播放只发给本人，故为单例） */
+    public static boolean isPlayerPlaying() {
+        return playerSound != null;
+    }
+
+    public static boolean isPlayerMuted() {
+        return playerSound != null && playerSound.isMuted();
+    }
+
+    public static boolean isBlockPlaying(BlockPos pos) {
+        return BLOCK_SOUNDS.containsKey(pos);
+    }
+
+    public static boolean isBlockMuted(BlockPos pos) {
+        CompatNetMusicSound sound = BLOCK_SOUNDS.get(pos);
+        return sound != null && sound.isMuted();
+    }
+
+    public static boolean isEntityPlaying(int entityId) {
+        return ENTITY_SOUNDS.containsKey(entityId);
+    }
+
+    public static boolean isEntityMuted(int entityId) {
+        CompatNetMusicSound sound = ENTITY_SOUNDS.get(entityId);
+        return sound != null && sound.isMuted();
+    }
+
     // ==================== 清理 ====================
 
     /** 登出时清空所有播放 */
