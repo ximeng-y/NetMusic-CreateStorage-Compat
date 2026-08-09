@@ -30,8 +30,10 @@ public class CompatNetMusicSound extends NetMusicBackpackSound {
     public CompatNetMusicSound(BlockPos pos, @Nullable Entity entity, URL url, int timeSecond, Runnable onFinished) {
         super(pos, entity, url, timeSecond);
         this.onFinished = onFinished;
-        // 原类构造逻辑：跟随实体 2.0F，静态方块 4.0F
-        this.baseVolume = entity != null ? 2.0F : 4.0F;
+        // 统一 32 格可闻距离：原版衰减公式 可闻距离 = 音量 × 16，音量 2.0 → 32 格。
+        // 父类构造逻辑：跟随实体 2.0F、静态方块 4.0F（64 格），静态分支在此覆盖为 2.0F。
+        this.baseVolume = 2.0F;
+        this.volume = 2.0F;
     }
 
     @Override

@@ -16,8 +16,8 @@ import net.neoforged.api.distmarker.OnlyIn;
 /**
  * 原版 JukeboxSong 声音的"跟随播放者"版（原版 EntitySoundInstance 固定跟随监听者本人）：
  * <ul>
- *   <li>自己的播放：相对声音、不衰减（与原版行为一致）</li>
- *   <li>别人的播放：跟随播放者实体位置、随距离衰减——支撑原版唱片穿戴播放多人可闻</li>
+ *   <li>自己的播放：相对声音、不衰减，音量 1.0（与原版行为一致）</li>
+ *   <li>别人的播放：跟随播放者实体位置、随距离衰减，音量 2.0 —— 可闻距离 = 音量 × 16 = 32 格</li>
  * </ul>
  * 其余逻辑（pale garden 音量、静音、淡入淡出、存活检查）与原版 EntitySoundInstance 一致。
  */
@@ -27,6 +27,7 @@ public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
     private static final float FADE_OUT_SPEED = 1f / (2.5f * 20f);
 
     private final Player followPlayer;
+    private final float baseVolume;
     private boolean muted;
     private float biomeVolumeMultiplier = 1.0f;
 
@@ -36,7 +37,8 @@ public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
         this.looping = true;
         this.delay = 0;
         this.muted = muted;
-        this.volume = muted ? 0.0F : 1.0F;
+        this.baseVolume = followPlayer != null && followPlayer.isLocalPlayer() ? 1.0F : 2.0F;
+        this.volume = muted ? 0.0F : baseVolume;
         this.pitch = 1.0F;
 
         if (followPlayer != null && followPlayer.isLocalPlayer()) {
@@ -44,7 +46,7 @@ public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
             this.attenuation = Attenuation.NONE;
             this.relative = true;
         } else if (followPlayer != null) {
-            // 别人的播放：跟随播放者位置、随距离衰减
+            // 别人的播放：跟随播放者位置、随距离衰减（音量 2.0 → 32 格可闻）
             this.attenuation = Attenuation.LINEAR;
             this.relative = false;
             updatePos();
@@ -59,7 +61,7 @@ public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
 
     public void setMuted(boolean muted) {
         this.muted = muted;
-        this.volume = muted ? 0.0f : 1.0f;
+        this.volume = muted ? 0.0f : baseVolume;
     }
 
     public void setBiomeVolume(float volume) {
@@ -69,7 +71,7 @@ public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
 
     private void applyVolume() {
         if (!muted) {
-            this.volume = 1.0f * biomeVolumeMultiplier;
+            this.volume = baseVolume * biomeVolumeMultiplier;
         }
     }
 

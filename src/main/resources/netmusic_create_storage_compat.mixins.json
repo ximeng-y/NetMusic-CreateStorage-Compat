@@ -12,7 +12,9 @@
   ],
   "client": [
     "ClientJukeboxHandlerMixin",
-    "JukeboxClientPacketMixin"
+    "JukeboxClientPacketMixin",
+    "StorageBlockSoundRangeMixin",
+    "StorageContraptionSoundRangeMixin"
   ],
   "injectors": {
     "defaultRequire": 1
