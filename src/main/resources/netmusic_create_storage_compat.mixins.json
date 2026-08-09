@@ -7,10 +7,12 @@
     "JukeboxDiscSlotMixin",
     "JukeboxServerPacketMixin",
     "JukeboxHandlerMixin",
+    "JukeboxHandlerBroadcastMixin",
     "JukeboxUpgradeMixin"
   ],
   "client": [
-    "ClientJukeboxHandlerMixin"
+    "ClientJukeboxHandlerMixin",
+    "JukeboxClientPacketMixin"
   ],
   "injectors": {
     "defaultRequire": 1

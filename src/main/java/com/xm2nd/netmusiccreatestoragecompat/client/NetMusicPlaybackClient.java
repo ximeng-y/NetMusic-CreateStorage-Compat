@@ -9,6 +9,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -26,7 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * 三种 source 各维护一份表（与 fxntstorage 客户端状态对应）：
  * <ul>
- *   <li>PLAYER：本玩家穿戴背包（单例，跟随玩家）</li>
+ *   <li>PLAYER：穿戴播放，按播放者实体 id 分表——自己的跟随自己（不衰减），
+ *       别人的跟随播放者实体（随距离衰减），实现穿戴播放多人可闻</li>
  *   <li>BLOCK：方块背包（按坐标静态定位）</li>
  *   <li>ENTITY：装置背包（跟随 contraption 实体）</li>
  * </ul>
@@ -34,7 +36,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @OnlyIn(Dist.CLIENT)
 public final class NetMusicPlaybackClient {
 
-    private static CompatNetMusicSound playerSound;
+    /** 穿戴播放：播放者实体 id → 声音实例（自己与他人共用，自己的 key = 本地玩家 id） */
+    private static final Map<Integer, CompatNetMusicSound> PLAYER_SOUNDS = new ConcurrentHashMap<>();
     private static final Map<BlockPos, CompatNetMusicSound> BLOCK_SOUNDS = new ConcurrentHashMap<>();
     private static final Map<Integer, CompatNetMusicSound> ENTITY_SOUNDS = new ConcurrentHashMap<>();
 
@@ -64,8 +67,18 @@ public final class NetMusicPlaybackClient {
 
         CompatNetMusicSound sound = switch (packet.source()) {
             case PLAYER -> {
-                stopPlayer();
-                yield new CompatNetMusicSound(BlockPos.ZERO, mc.player, url, info.songTime, NetMusicPlaybackClient::onPlayerFinished);
+                int selfId = mc.player.getId();
+                int ownerId = packet.entityId().orElse(selfId);
+                if (ownerId == selfId) {
+                    // 自己的穿戴播放：跟随自己，播完通知服务端清状态
+                    stopPlayerSound(selfId);
+                    yield new CompatNetMusicSound(BlockPos.ZERO, mc.player, url, info.songTime, NetMusicPlaybackClient::onPlayerFinished);
+                }
+                // 别人的穿戴播放：跟随播放者实体，播完仅本地清理（服务端状态由播放者本人汇报）
+                Entity owner = level.getEntity(ownerId);
+                if (!(owner instanceof Player)) yield null;
+                stopPlayerSound(ownerId);
+                yield new CompatNetMusicSound(BlockPos.ZERO, owner, url, info.songTime, () -> onOtherPlayerFinished(ownerId));
             }
             case BLOCK -> {
                 BlockPos pos = packet.pos().orElse(null);
@@ -91,7 +104,10 @@ public final class NetMusicPlaybackClient {
         mc.gui.setNowPlaying(Component.literal(info.songName));
 
         switch (packet.source()) {
-            case PLAYER -> playerSound = sound;
+            case PLAYER -> {
+                int selfId = mc.player.getId();
+                PLAYER_SOUNDS.put(packet.entityId().orElse(selfId), sound);
+            }
             case BLOCK -> packet.pos().ifPresent(pos -> BLOCK_SOUNDS.put(pos, sound));
             case ENTITY -> packet.entityId().ifPresent(id -> ENTITY_SOUNDS.put(id, sound));
         }
@@ -101,16 +117,16 @@ public final class NetMusicPlaybackClient {
 
     private static void stop(PlayDiscPacket packet) {
         switch (packet.source()) {
-            case PLAYER -> stopPlayer();
+            case PLAYER -> stopPlayerSound(packet.entityId().orElseGet(() -> Minecraft.getInstance().player.getId()));
             case BLOCK -> packet.pos().ifPresent(NetMusicPlaybackClient::stopBlock);
             case ENTITY -> packet.entityId().ifPresent(NetMusicPlaybackClient::stopEntity);
         }
     }
 
-    private static void stopPlayer() {
-        if (playerSound != null) {
-            Minecraft.getInstance().getSoundManager().stop(playerSound);
-            playerSound = null;
+    private static void stopPlayerSound(int entityId) {
+        CompatNetMusicSound sound = PLAYER_SOUNDS.remove(entityId);
+        if (sound != null) {
+            Minecraft.getInstance().getSoundManager().stop(sound);
         }
     }
 
@@ -132,7 +148,10 @@ public final class NetMusicPlaybackClient {
 
     private static void mute(PlayDiscPacket packet) {
         CompatNetMusicSound sound = switch (packet.source()) {
-            case PLAYER -> playerSound;
+            case PLAYER -> {
+                int selfId = Minecraft.getInstance().player.getId();
+                yield PLAYER_SOUNDS.get(packet.entityId().orElse(selfId));
+            }
             case BLOCK -> packet.pos().map(BLOCK_SOUNDS::get).orElse(null);
             case ENTITY -> packet.entityId().map(ENTITY_SOUNDS::get).orElse(null);
         };
@@ -144,8 +163,16 @@ public final class NetMusicPlaybackClient {
     // ==================== 歌曲播完回调 ====================
 
     private static void onPlayerFinished() {
-        playerSound = null;
+        Player player = Minecraft.getInstance().player;
+        if (player != null) {
+            PLAYER_SOUNDS.remove(player.getId());
+        }
         sendFinished(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.empty());
+    }
+
+    private static void onOtherPlayerFinished(int entityId) {
+        // 别人的穿戴播放播完：仅本地清理，不通知服务端（状态由播放者本人汇报）
+        PLAYER_SOUNDS.remove(entityId);
     }
 
     private static void onBlockFinished(BlockPos pos) {
@@ -164,15 +191,20 @@ public final class NetMusicPlaybackClient {
 
     // ==================== 状态查询 ====================
     // 供 ClientJukeboxHandlerMixin 合并状态：面板播放/停止/静音按钮图标
-    // 每 tick 读 ClientJukeboxHandler 的查询方法，命中这里则返回 NetMusic 状态
+    // 每 tick 读 ClientJukeboxHandler 的查询方法，命中这里则返回 NetMusic 状态。
+    // 穿戴播放只反映"自己"的播放（别人的播放不改变本地面板状态）
 
-    /** 本玩家是否在播 NetMusic（WORN 播放只发给本人，故为单例） */
+    /** 本玩家是否在播 NetMusic 穿戴播放 */
     public static boolean isPlayerPlaying() {
-        return playerSound != null;
+        Player player = Minecraft.getInstance().player;
+        return player != null && PLAYER_SOUNDS.containsKey(player.getId());
     }
 
     public static boolean isPlayerMuted() {
-        return playerSound != null && playerSound.isMuted();
+        Player player = Minecraft.getInstance().player;
+        if (player == null) return false;
+        CompatNetMusicSound sound = PLAYER_SOUNDS.get(player.getId());
+        return sound != null && sound.isMuted();
     }
 
     public static boolean isBlockPlaying(BlockPos pos) {
@@ -197,7 +229,11 @@ public final class NetMusicPlaybackClient {
 
     /** 登出时清空所有播放 */
     public static void stopAll() {
-        stopPlayer();
+        Minecraft mc = Minecraft.getInstance();
+        for (CompatNetMusicSound sound : PLAYER_SOUNDS.values()) {
+            mc.getSoundManager().stop(sound);
+        }
+        PLAYER_SOUNDS.clear();
         BLOCK_SOUNDS.keySet().forEach(NetMusicPlaybackClient::stopBlock);
         ENTITY_SOUNDS.keySet().forEach(NetMusicPlaybackClient::stopEntity);
     }

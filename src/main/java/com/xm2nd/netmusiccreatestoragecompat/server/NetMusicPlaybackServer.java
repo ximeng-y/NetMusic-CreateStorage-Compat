@@ -10,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -55,7 +56,10 @@ public final class NetMusicPlaybackServer {
 
     // ==================== 播放入口 ====================
 
-    /** 穿戴（WORN）：只发给玩家本人（与 fxntstorage playPlayer 语义一致） */
+    /**
+     * 穿戴（WORN）：广播给玩家位置附近的玩家（声音跟随播放者，附近玩家可闻）。
+     * 与原版 playPlayer 只发本人的语义不同，这是本 mod 的扩展行为。
+     */
     public static void playForPlayer(ServerPlayer player, ItemMusicCD.SongInfo songInfo) {
         UUID uuid = player.getUUID();
         stopPlayer(player); // 同键替换：先停旧的
@@ -65,7 +69,8 @@ public final class NetMusicPlaybackServer {
             // resolve 完成时播放可能已停止或换歌，校验仍是同一首才发送
             PlayerPlayback current = PLAYER_PLAYBACKS.get(uuid);
             if (current != null && current.songInfo().equals(songInfo)) {
-                PacketDistributor.sendToPlayer(player, playPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.empty(), resolved, false));
+                sendToNearby(player.serverLevel(), player.getX(), player.getY(), player.getZ(),
+                        playPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(player.getId()), resolved, false));
             }
         });
     }
@@ -80,12 +85,16 @@ public final class NetMusicPlaybackServer {
         sendResolved(level.getServer(), songInfo, resolved -> {
             BlockPlayback current = BLOCK_PLAYBACKS.get(key);
             if (current != null && current.songInfo().equals(songInfo)) {
-                sendToNearby(level, pos, playPacket(PlayDiscPacket.Source.BLOCK, Optional.of(pos), Optional.empty(), resolved, false));
+                sendToNearby(level, pos.getX(), pos.getY(), pos.getZ(),
+                        playPacket(PlayDiscPacket.Source.BLOCK, Optional.of(pos), Optional.empty(), resolved, false));
             }
         });
     }
 
-    /** 装置（CONTRAPTION）：只发给打开背包菜单的 listener（与 fxntstorage playEntity 语义一致） */
+    /**
+     * 装置（CONTRAPTION）：广播给 contraption 实体位置附近的玩家（声音跟随装置）。
+     * 与原版 playEntity 只发 listener 的语义不同，这是本 mod 的扩展行为。
+     */
     public static void playForEntity(ServerPlayer listener, int entityId, ItemMusicCD.SongInfo songInfo) {
         stopEntity(listener, entityId); // 同键替换：先停旧的
 
@@ -93,7 +102,8 @@ public final class NetMusicPlaybackServer {
         sendResolved(listener.serverLevel().getServer(), songInfo, resolved -> {
             EntityPlayback current = ENTITY_PLAYBACKS.get(entityId);
             if (current != null && current.songInfo().equals(songInfo)) {
-                PacketDistributor.sendToPlayer(listener, playPacket(PlayDiscPacket.Source.ENTITY, Optional.empty(), Optional.of(entityId), resolved, false));
+                broadcastEntity(listener, entityId,
+                        playPacket(PlayDiscPacket.Source.ENTITY, Optional.empty(), Optional.of(entityId), resolved, false));
             }
         });
     }
@@ -103,20 +113,22 @@ public final class NetMusicPlaybackServer {
     public static void stopPlayer(ServerPlayer player) {
         UUID uuid = player.getUUID();
         if (PLAYER_PLAYBACKS.remove(uuid) != null) {
-            PacketDistributor.sendToPlayer(player, stopPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.empty()));
+            sendToNearby(player.serverLevel(), player.getX(), player.getY(), player.getZ(),
+                    stopPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(player.getId())));
         }
     }
 
     public static void stopBlock(Level level, BlockPos pos) {
         JukeboxHandler.BlockKey key = JukeboxHandler.BlockKey.of(level, pos);
         if (BLOCK_PLAYBACKS.remove(key) != null && level instanceof ServerLevel serverLevel) {
-            sendToNearby(serverLevel, pos, stopPacket(PlayDiscPacket.Source.BLOCK, Optional.of(pos), Optional.empty()));
+            sendToNearby(serverLevel, pos.getX(), pos.getY(), pos.getZ(),
+                    stopPacket(PlayDiscPacket.Source.BLOCK, Optional.of(pos), Optional.empty()));
         }
     }
 
     public static void stopEntity(ServerPlayer listener, int entityId) {
         if (ENTITY_PLAYBACKS.remove(entityId) != null) {
-            PacketDistributor.sendToPlayer(listener, stopPacket(PlayDiscPacket.Source.ENTITY, Optional.empty(), Optional.of(entityId)));
+            broadcastEntity(listener, entityId, stopPacket(PlayDiscPacket.Source.ENTITY, Optional.empty(), Optional.of(entityId)));
         }
     }
 
@@ -128,7 +140,8 @@ public final class NetMusicPlaybackServer {
             case PLAYER -> {
                 PLAYER_PLAYBACKS.computeIfPresent(player.getUUID(), (uuid, pb) -> {
                     boolean newMuted = !pb.muted();
-                    PacketDistributor.sendToPlayer(player, mutePacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.empty(), newMuted));
+                    sendToNearby(player.serverLevel(), player.getX(), player.getY(), player.getZ(),
+                            mutePacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(player.getId()), newMuted));
                     return new PlayerPlayback(pb.songInfo(), newMuted);
                 });
             }
@@ -137,14 +150,15 @@ public final class NetMusicPlaybackServer {
                 JukeboxHandler.BlockKey key = JukeboxHandler.BlockKey.of(level, blockPos);
                 BLOCK_PLAYBACKS.computeIfPresent(key, (k, pb) -> {
                     boolean newMuted = !pb.muted();
-                    sendToNearby(level, blockPos, mutePacket(PlayDiscPacket.Source.BLOCK, Optional.of(blockPos), Optional.empty(), newMuted));
+                    sendToNearby(level, blockPos.getX(), blockPos.getY(), blockPos.getZ(),
+                            mutePacket(PlayDiscPacket.Source.BLOCK, Optional.of(blockPos), Optional.empty(), newMuted));
                     return new BlockPlayback(pb.songInfo(), newMuted);
                 });
             });
             case ENTITY -> entityId.ifPresent(id -> {
                 ENTITY_PLAYBACKS.computeIfPresent(id, (k, pb) -> {
                     boolean newMuted = !pb.muted();
-                    PacketDistributor.sendToPlayer(player, mutePacket(PlayDiscPacket.Source.ENTITY, Optional.empty(), Optional.of(id), newMuted));
+                    broadcastEntity(player, id, mutePacket(PlayDiscPacket.Source.ENTITY, Optional.empty(), Optional.of(id), newMuted));
                     return new EntityPlayback(pb.songInfo(), newMuted);
                 });
             });
@@ -183,27 +197,32 @@ public final class NetMusicPlaybackServer {
     // ==================== 玩家登录补发 ====================
 
     /**
-     * 玩家登录时补发：本人穿戴播放 + 附近方块播放（与 fxntstorage syncBlocksToPlayers 语义一致）。
+     * 玩家登录时补发：附近玩家的穿戴播放（含本人）+ 附近方块播放（与 fxntstorage syncBlocksToPlayers 语义一致）。
      */
     public static void syncToPlayer(ServerPlayer player) {
         ServerLevel level = player.serverLevel();
         int range = broadcastRange();
+        double maxDist = (double) range * range;
 
         for (Map.Entry<JukeboxHandler.BlockKey, BlockPlayback> entry : BLOCK_PLAYBACKS.entrySet()) {
             JukeboxHandler.BlockKey key = entry.getKey();
             if (!key.dimension().equals(level.dimension())) continue;
 
             BlockPos pos = key.pos();
-            double maxDist = (double) range * range;
             if (player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) > maxDist) continue;
 
             BlockPlayback pb = entry.getValue();
             PacketDistributor.sendToPlayer(player, playPacket(PlayDiscPacket.Source.BLOCK, Optional.of(pos), Optional.empty(), pb.songInfo(), pb.muted()));
         }
 
-        PlayerPlayback own = PLAYER_PLAYBACKS.get(player.getUUID());
-        if (own != null) {
-            PacketDistributor.sendToPlayer(player, playPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.empty(), own.songInfo(), own.muted()));
+        // 穿戴播放：本人必发，其他在线玩家在距离内补发（声音跟随播放者实体）
+        for (Map.Entry<UUID, PlayerPlayback> entry : PLAYER_PLAYBACKS.entrySet()) {
+            ServerPlayer owner = level.getServer().getPlayerList().getPlayer(entry.getKey());
+            if (owner == null) continue;
+            if (owner == player || player.distanceToSqr(owner) <= maxDist) {
+                PlayerPlayback pb = entry.getValue();
+                PacketDistributor.sendToPlayer(player, playPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(owner.getId()), pb.songInfo(), pb.muted()));
+            }
         }
     }
 
@@ -228,8 +247,19 @@ public final class NetMusicPlaybackServer {
         return ConfigManager.ServerConfig.JUKEBOX_BUFFS_RANGE.get();
     }
 
-    private static void sendToNearby(ServerLevel level, BlockPos pos, PlayDiscPacket packet) {
-        PacketDistributor.sendToPlayersNear(level, null, pos.getX(), pos.getY(), pos.getZ(), broadcastRange(), packet);
+    private static void sendToNearby(ServerLevel level, double x, double y, double z, PlayDiscPacket packet) {
+        PacketDistributor.sendToPlayersNear(level, null, x, y, z, broadcastRange(), packet);
+    }
+
+    /** 广播到 contraption 实体位置附近；实体不可见（卸载/消失）时退回 listener 位置 */
+    private static void broadcastEntity(ServerPlayer listener, int entityId, PlayDiscPacket packet) {
+        ServerLevel level = listener.serverLevel();
+        Entity entity = level.getEntity(entityId);
+        if (entity != null) {
+            sendToNearby(level, entity.getX(), entity.getY(), entity.getZ(), packet);
+        } else {
+            sendToNearby(level, listener.getX(), listener.getY(), listener.getZ(), packet);
+        }
     }
 
     private static PlayDiscPacket playPacket(PlayDiscPacket.Source source, Optional<BlockPos> pos, Optional<Integer> entityId,
