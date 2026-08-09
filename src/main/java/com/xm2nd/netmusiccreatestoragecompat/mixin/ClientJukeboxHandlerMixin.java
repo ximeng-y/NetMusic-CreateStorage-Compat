@@ -49,12 +49,14 @@ public abstract class ClientJukeboxHandlerMixin {
      * 替换原版 EntitySoundInstance（固定跟随监听者本人）：
      * 自己的播放跟随自己（原行为），别人的播放跟随播放者实体（随距离衰减）。
      * 播放者实体不可见时不播（出视野即无声，与原版声音存活语义一致）。
-     * 注意：play 调用在合成 lambda 方法 lambda$playPlayer$0 内，注入点指向它。
+     * 注意：play 调用在合成 lambda 方法 lambda$playPlayer$0 内，注入点指向它；
+     * @Redirect handler 参数顺序为「被替换调用参数在前，目标方法参数在后」。
      */
     @Redirect(method = "lambda$playPlayer$0", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/sounds/SoundManager;play(Lnet/minecraft/client/resources/sounds/SoundInstance;)V"))
-    private static void netmusic_create_storage_compat$redirectPlay(Minecraft mc, ClientJukeboxHandler.PlayerPlayback player,
-                                                                    ClientLevel level, SoundManager soundManager, UUID playerId,
-                                                                    Holder.Reference<JukeboxSong> holder, SoundInstance soundInstance) {
+    private static void netmusic_create_storage_compat$redirectPlay(SoundManager soundManager, SoundInstance soundInstance,
+                                                                    Minecraft mc, ClientJukeboxHandler.PlayerPlayback player,
+                                                                    ClientLevel level, SoundManager unusedSoundManager,
+                                                                    UUID playerId, Holder.Reference<JukeboxSong> holder) {
         if (mc.level == null) {
             return;
         }
