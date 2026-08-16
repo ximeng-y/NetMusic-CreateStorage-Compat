@@ -1,5 +1,7 @@
 package com.xm2nd.netmusiccreatestoragecompat.mixin;
 
+import com.xm2nd.netmusiccreatestoragecompat.client.CompatJukeboxPlaybackClient;
+import com.xm2nd.netmusiccreatestoragecompat.client.PendingPlayerPlaybacks;
 import net.fxnt.fxntstorage.backpack.upgrade.jukebox.ClientJukeboxHandler;
 import net.fxnt.fxntstorage.network.packet.JukeboxClientPacket;
 import net.minecraft.client.Minecraft;
@@ -61,13 +63,17 @@ public abstract class JukeboxClientPacketMixin {
 
         // 别人的播放：key=播放者 uuid，声音跟随播放者实体
         Entity owner = mc.level == null ? null : mc.level.getEntity(ownerId);
-        if (!(owner instanceof Player ownerPlayer)) {
-            ci.cancel(); // 实体不可见：不播
+        if (owner instanceof Player ownerPlayer) {
+            UUID ownerUuid = ownerPlayer.getUUID();
+            // 记录 entityId→UUID 映射：STOP 时播放者实体可能已卸载，用此映射解析 UUID
+            CompatJukeboxPlaybackClient.recordUuid(ownerId, ownerUuid);
+            this.song().ifPresent(song -> ClientJukeboxHandler.playPlayer(
+                    new ClientJukeboxHandler.PlayerPlayback(ownerUuid, null, song, this.muted())));
+            ci.cancel();
             return;
         }
-        UUID ownerUuid = ownerPlayer.getUUID();
-        this.song().ifPresent(song -> ClientJukeboxHandler.playPlayer(
-                new ClientJukeboxHandler.PlayerPlayback(ownerUuid, null, song, this.muted())));
+        // 播放者实体未加载（远处/跨维度/刚登录）：挂起待补播，实体加载后由客户端 tick 补播
+        this.song().ifPresent(song -> PendingPlayerPlaybacks.pendPlayer(ownerId, song, this.muted()));
         ci.cancel();
     }
 
@@ -83,10 +89,21 @@ public abstract class JukeboxClientPacketMixin {
             return; // 自己：走原逻辑
         }
 
+        // 挂起待补播的播放一并清理
+        PendingPlayerPlaybacks.removePlayer(ownerId);
+        // 解析播放者 UUID：优先从实体，实体未加载时从映射查（使远处 STOP 也能停止）
+        UUID ownerUuid = null;
         Entity owner = mc.level == null ? null : mc.level.getEntity(ownerId);
         if (owner instanceof Player ownerPlayer) {
-            ClientJukeboxHandler.stopPlayer(ownerPlayer.getUUID());
+            ownerUuid = ownerPlayer.getUUID();
+        } else {
+            ownerUuid = CompatJukeboxPlaybackClient.getUuid(ownerId);
         }
+        if (ownerUuid != null) {
+            // stopPlayer 会触发 stopPlayer inject → 停并行表 compat 声音 + 清 fxntstorage 孤儿表
+            ClientJukeboxHandler.stopPlayer(ownerUuid);
+        }
+        CompatJukeboxPlaybackClient.removeMapping(ownerId);
         ci.cancel();
     }
 }

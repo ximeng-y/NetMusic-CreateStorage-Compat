@@ -12,28 +12,37 @@ import net.minecraft.world.item.JukeboxSong;
 import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.UUID;
 
 /**
  * 原版 JukeboxSong 声音的"跟随播放者"版（原版 EntitySoundInstance 固定跟随监听者本人）：
  * <ul>
  *   <li>自己的播放：相对声音、不衰减，音量 1.0（与原版行为一致）</li>
- *   <li>别人的播放：跟随播放者实体位置、随距离衰减，音量 2.0 —— 可闻距离 = 音量 × 16 = 32 格</li>
+ *   <li>别人的播放：按播放者 uuid 每 tick 解析跟随、随距离衰减，音量 2.0 ——
+ *       可闻距离 = 音量 × 16 = 32 格；播放者实体未加载（远处/跨维度）时声音照常
+ *       创建并保持上次位置，实体加载（走近）后自动续跟淡入</li>
  * </ul>
- * 其余逻辑（pale garden 音量、静音、淡入淡出、存活检查）与原版 EntitySoundInstance 一致。
+ * 其余逻辑（pale garden 音量、静音、淡入淡出）与原版 EntitySoundInstance 一致。
  */
 @OnlyIn(Dist.CLIENT)
 public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
     private static final float FADE_IN_SPEED = 1f / (10.0f * 20f);
     private static final float FADE_OUT_SPEED = 1f / (2.5f * 20f);
 
+    /** 构造时的播放者实体引用：仅用于本地玩家判定与初始位置，跟随靠 followUuid 每 tick 解析 */
     private final Player followPlayer;
+    /** 播放者 uuid：实体未加载时按 uuid 每 tick 重新解析跟随 */
+    private final UUID followUuid;
     private final float baseVolume;
     private boolean muted;
     private float biomeVolumeMultiplier = 1.0f;
 
-    public CompatJukeboxEntitySound(JukeboxSong song, Player followPlayer, boolean muted) {
+    public CompatJukeboxEntitySound(JukeboxSong song, @Nullable Player followPlayer, UUID followUuid, boolean muted) {
         super(song.soundEvent().value(), SoundSource.RECORDS, RandomSource.create());
         this.followPlayer = followPlayer;
+        this.followUuid = followUuid;
         this.looping = true;
         this.delay = 0;
         this.muted = muted;
@@ -45,11 +54,13 @@ public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
             // 自己的播放：跟随自己、不衰减
             this.attenuation = Attenuation.NONE;
             this.relative = true;
-        } else if (followPlayer != null) {
+        } else {
             // 别人的播放：跟随播放者位置、随距离衰减（音量 2.0 → 32 格可闻）
             this.attenuation = Attenuation.LINEAR;
             this.relative = false;
-            updatePos();
+            if (followPlayer != null) {
+                updatePos();
+            }
         }
     }
 
@@ -62,6 +73,10 @@ public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
     public void setMuted(boolean muted) {
         this.muted = muted;
         this.volume = muted ? 0.0f : baseVolume;
+    }
+
+    public boolean isMuted() {
+        return muted;
     }
 
     public void setBiomeVolume(float volume) {
@@ -77,17 +92,22 @@ public class CompatJukeboxEntitySound extends AbstractTickableSoundInstance {
 
     @Override
     public void tick() {
-        if (isStopped() || followPlayer == null || !followPlayer.isAlive() || followPlayer.isRemoved()) {
-            this.stop();
+        if (isStopped()) {
             return;
         }
 
-        // 别人的播放：跟随播放者位置
-        if (!followPlayer.isLocalPlayer()) {
-            updatePos();
+        // 别人的播放：按 uuid 每 tick 解析播放者实体（未加载时保持上次位置，加载后自动续跟）
+        Minecraft mc = Minecraft.getInstance();
+        if (followUuid != null && !relative) {
+            Player owner = mc.level == null ? null : mc.level.getPlayerByUUID(followUuid);
+            if (owner != null && !owner.isLocalPlayer()) {
+                this.x = (float) owner.getX();
+                this.y = (float) owner.getY();
+                this.z = (float) owner.getZ();
+            }
         }
 
-        Player listener = Minecraft.getInstance().player;
+        Player listener = mc.player;
         boolean inPaleGarden = listener != null && isInPaleGarden(listener.level(), listener.blockPosition());
 
         if (!muted) {

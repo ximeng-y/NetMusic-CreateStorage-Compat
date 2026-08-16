@@ -44,7 +44,11 @@ public final class NetMusicPlaybackServer {
     private record BlockPlayback(ItemMusicCD.SongInfo songInfo, boolean muted) {
     }
 
-    private record PlayerPlayback(ItemMusicCD.SongInfo songInfo, boolean muted) {
+    /**
+     * 记录播放时的 entityId：玩家重生后 entity id 会变，
+     * STOP/MUTE 必须用播放时的旧 id 广播，客户端表（按 entityId 建键）才能匹配到旧声音实例。
+     */
+    private record PlayerPlayback(ItemMusicCD.SongInfo songInfo, int entityId, boolean muted) {
     }
 
     private record EntityPlayback(ItemMusicCD.SongInfo songInfo, boolean muted) {
@@ -63,7 +67,7 @@ public final class NetMusicPlaybackServer {
         UUID uuid = player.getUUID();
         stopPlayer(player); // 同键替换：先停旧的
 
-        PLAYER_PLAYBACKS.put(uuid, new PlayerPlayback(songInfo, false));
+        PLAYER_PLAYBACKS.put(uuid, new PlayerPlayback(songInfo, player.getId(), false));
         sendResolved(player.serverLevel().getServer(), songInfo, resolved -> {
             // resolve 完成时播放可能已停止或换歌，校验仍是同一首才发送
             PlayerPlayback current = PLAYER_PLAYBACKS.get(uuid);
@@ -111,9 +115,12 @@ public final class NetMusicPlaybackServer {
 
     public static void stopPlayer(ServerPlayer player) {
         UUID uuid = player.getUUID();
-        if (PLAYER_PLAYBACKS.remove(uuid) != null) {
+        PlayerPlayback pb = PLAYER_PLAYBACKS.remove(uuid);
+        if (pb != null) {
+            // 用播放时记录的 entityId 广播 STOP：玩家重生后 id 会变，
+            // 客户端表键是 PLAY 时的旧 id，用旧 id 才能匹配
             PacketDistributor.sendToAllPlayers(
-                    stopPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(player.getId())));
+                    stopPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(pb.entityId())));
         }
     }
 
@@ -141,8 +148,8 @@ public final class NetMusicPlaybackServer {
                 PLAYER_PLAYBACKS.computeIfPresent(player.getUUID(), (uuid, pb) -> {
                     boolean newMuted = !pb.muted();
                     PacketDistributor.sendToAllPlayers(
-                            mutePacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(player.getId()), newMuted));
-                    return new PlayerPlayback(pb.songInfo(), newMuted);
+                            mutePacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(pb.entityId()), newMuted));
+                    return new PlayerPlayback(pb.songInfo(), pb.entityId(), newMuted);
                 });
             }
             case BLOCK -> pos.ifPresent(blockPos -> {
@@ -214,6 +221,8 @@ public final class NetMusicPlaybackServer {
             ServerPlayer owner = server.getPlayerList().getPlayer(entry.getKey());
             if (owner == null) continue;
             PlayerPlayback pb = entry.getValue();
+            // 新登录的客户端用 owner 当前 id 建表（owner 在线，id 为当前有效值）；
+            // 该 id 与后续 PLAY/STOP/MUTE 广播携带的 id 一致，客户端表可正确匹配
             PacketDistributor.sendToPlayer(player, playPacket(PlayDiscPacket.Source.PLAYER, Optional.empty(), Optional.of(owner.getId()), pb.songInfo(), pb.muted()));
         }
     }

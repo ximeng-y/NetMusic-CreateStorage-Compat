@@ -8,7 +8,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
@@ -28,7 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * 三种 source 各维护一份表（与 fxntstorage 客户端状态对应）：
  * <ul>
  *   <li>PLAYER：穿戴播放，按播放者实体 id 分表——自己的跟随自己（不衰减），
- *       别人的跟随播放者实体（随距离衰减），实现穿戴播放多人可闻</li>
+ *       别人的按播放者实体 id 每 tick 跟随（随距离衰减，实体未加载时保持上次位置、
+ *       加载后自动续跟），实现穿戴播放多人可闻</li>
  *   <li>BLOCK：方块背包（按坐标静态定位）</li>
  *   <li>ENTITY：装置背包（跟随 contraption 实体）</li>
  * </ul>
@@ -72,26 +72,24 @@ public final class NetMusicPlaybackClient {
                 if (ownerId == selfId) {
                     // 自己的穿戴播放：跟随自己，播完通知服务端清状态
                     stopPlayerSound(selfId);
-                    yield new CompatNetMusicSound(BlockPos.ZERO, mc.player, url, info.songTime, NetMusicPlaybackClient::onPlayerFinished);
+                    yield new CompatNetMusicSound(BlockPos.ZERO, mc.player, -1, url, info.songTime, NetMusicPlaybackClient::onPlayerFinished);
                 }
-                // 别人的穿戴播放：跟随播放者实体，播完仅本地清理（服务端状态由播放者本人汇报）
-                Entity owner = level.getEntity(ownerId);
-                if (!(owner instanceof Player)) yield null;
+                // 别人的穿戴播放：声音按播放者实体 id 每 tick 跟随（实体未加载时保持上次位置，
+                // 走近后自动续跟淡入——不再因远处未加载而整段丢弃），播完仅本地清理（服务端状态由播放者本人汇报）
                 stopPlayerSound(ownerId);
-                yield new CompatNetMusicSound(BlockPos.ZERO, owner, url, info.songTime, () -> onOtherPlayerFinished(ownerId));
+                yield new CompatNetMusicSound(BlockPos.ZERO, null, ownerId, url, info.songTime, () -> onOtherPlayerFinished(ownerId));
             }
             case BLOCK -> {
                 BlockPos pos = packet.pos().orElse(null);
                 if (pos == null) yield null;
                 stopBlock(pos);
-                yield new CompatNetMusicSound(pos, null, url, info.songTime, () -> onBlockFinished(pos));
+                yield new CompatNetMusicSound(pos, null, -1, url, info.songTime, () -> onBlockFinished(pos));
             }
             case ENTITY -> {
                 int entityId = packet.entityId().orElse(-1);
-                Entity entity = level.getEntity(entityId);
-                if (entity == null) yield null;
+                if (entityId == -1) yield null;
                 stopEntity(entityId);
-                yield new CompatNetMusicSound(BlockPos.ZERO, entity, url, info.songTime, () -> onEntityFinished(entityId));
+                yield new CompatNetMusicSound(BlockPos.ZERO, null, entityId, url, info.songTime, () -> onEntityFinished(entityId));
             }
         };
         if (sound == null) return;
